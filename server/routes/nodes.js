@@ -31,13 +31,15 @@ router.get('/', async (req, res) => {
     }
 
     if (maxYear || minYear) {
-      query.year = {};
+      const range = {};
       if (maxYear) {
-        query.year.$lte = parseInt(maxYear);
+        range.$lte = parseInt(maxYear);
       }
       if (minYear) {
-        query.year.$gte = parseInt(minYear);
+        range.$gte = parseInt(minYear);
       }
+      // Keep undated nodes visible - see the note in routes/graph.js.
+      query.$and = [{ $or: [{ year: range }, { year: { $exists: false } }, { year: null }] }];
     }
     
     if (tags) {

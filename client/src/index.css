@@ -5,39 +5,115 @@
 }
 
 :root {
+  /* --- Brand --- */
   --primary: #6366f1;
   --primary-dark: #4f46e5;
+  --primary-glow: rgba(99, 102, 241, 0.35);
   --secondary: #8b5cf6;
   --accent: #ec4899;
   --success: #10b981;
   --warning: #f59e0b;
   --error: #ef4444;
-  --bg-primary: #0f172a;
-  --bg-secondary: #1e293b;
-  --bg-tertiary: #334155;
+
+  /* --- Surfaces ---
+     The graph is the background layer, so panels sit *over* it as translucent
+     glass rather than as opaque columns. */
+  --bg-primary: #0b1120;
+  --bg-secondary: #131c30;
+  --bg-tertiary: #1e293b;
+  --glass: rgba(17, 25, 43, 0.78);
+  --glass-strong: rgba(13, 20, 36, 0.92);
+  --glass-border: rgba(148, 163, 184, 0.16);
+  --glass-border-strong: rgba(148, 163, 184, 0.28);
+
+  /* --- Text --- */
   --text-primary: #f1f5f9;
   --text-secondary: #cbd5e1;
-  --text-muted: #94a3b8;
-  --border: #475569;
+  --text-muted: #8195b0;
+  --border: #334155;
+
+  /* --- Spacing scale (4px base) --- */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 20px;
+  --s6: 24px;
+  --s8: 32px;
+
+  /* --- Radius --- */
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-xl: 20px;
+  --r-full: 999px;
+
+  /* --- Type scale --- */
+  --t-xs: 0.7rem;
+  --t-sm: 0.8rem;
+  --t-base: 0.875rem;
+  --t-md: 1rem;
+  --t-lg: 1.15rem;
+
+  /* --- Elevation --- */
   --shadow: rgba(0, 0, 0, 0.3);
   --shadow-lg: rgba(0, 0, 0, 0.5);
+  --e1: 0 1px 2px rgba(0, 0, 0, 0.28);
+  --e2: 0 4px 14px rgba(0, 0, 0, 0.34);
+  --e3: 0 12px 34px rgba(0, 0, 0, 0.46);
+
+  /* --- Motion --- */
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --fast: 140ms var(--ease);
+  --med: 240ms var(--ease);
 }
 
 body {
   margin: 0;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto',
+    'Helvetica Neue', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  background: var(--bg-primary);
   color: var(--text-primary);
   overflow: hidden;
+  font-size: 15px;
 }
 
 code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
 }
 
+/* --- Shared glass surface, used by every floating panel --- */
+.glass {
+  background: var(--glass);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--e3);
+}
 
+/* --- Scrollbars: thin and unobtrusive over the graph --- */
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.22);
+  border-radius: var(--r-full);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.4); background-clip: content-box; }
+
+/* --- Focus ring, applied consistently --- */
+:where(button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

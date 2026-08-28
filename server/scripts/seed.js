@@ -242,10 +242,14 @@ async function seed() {
     await mongoose.connect(MONGODB_URI);
     console.log('Connected to MongoDB');
 
-    // Clear existing data
-    await Node.deleteMany({});
-    await Edge.deleteMany({});
-    console.log('Cleared existing data');
+    // Clear existing data.
+    // Scoped to the workspaces this script actually seeds - an unscoped
+    // deleteMany({}) would also destroy other workspaces, including anything
+    // pulled in from the web via /api/ingest.
+    const seededWorkspaces = [...new Set(seedData.nodes.map(n => n.workspace || 'default'))];
+    await Node.deleteMany({ workspace: { $in: seededWorkspaces } });
+    await Edge.deleteMany({ workspace: { $in: seededWorkspaces } });
+    console.log(`Cleared existing data in: ${seededWorkspaces.join(', ')}`);
 
     // Insert nodes
     const insertedNodes = await Node.insertMany(seedData.nodes);

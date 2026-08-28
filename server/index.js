@@ -23,6 +23,7 @@ app.use('/api/graph', require('./routes/graph'));
 app.use('/api/import', require('./routes/import'));
 app.use('/api/export', require('./routes/export'));
 app.use('/api/insights', require('./routes/insights'));
+app.use('/api/ingest', require('./routes/ingest'));
 
 // Health check
 app.get('/api/health', (req, res) => {

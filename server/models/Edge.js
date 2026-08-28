@@ -37,6 +37,12 @@ const edgeSchema = new mongoose.Schema({
     type: String,
     default: 'default',
     index: true
+  },
+  source: {
+    type: String,
+    trim: true,
+    default: 'manual',
+    index: true
   }
 }, {
   timestamps: true

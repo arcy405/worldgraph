@@ -188,3 +188,89 @@ export const deleteEdge = async (id) => {
   }
 };
 
+
+/**
+ * Pull real entities and relations from Wikipedia + Wikidata into a workspace.
+ * Ingestion walks several API batches, so allow a generous timeout.
+ */
+export const ingestFromWeb = async ({ source = 'wikidata', topic, seeds = 20, maxNodes = 250, depth = 1, workspace = 'default' }) => {
+  try {
+    const response = await axios.post(
+      `${API_BASE_URL}/ingest/${source}`,
+      { topic, seeds, maxNodes, depth, workspace },
+      { timeout: 300000 }
+    );
+    return response.data;
+  } catch (error) {
+    const detail = error.response?.data?.error;
+    console.error('Error ingesting from web:', detail || error.message);
+    throw new Error(detail || error.message || 'Ingest failed');
+  }
+};
+
+/** Preview the Wikipedia pages a topic would pull in, without writing anything. */
+export const previewTopic = async (topic, seeds = 8) => {
+  try {
+    const response = await axios.get(
+      `${API_BASE_URL}/ingest/preview?topic=${encodeURIComponent(topic)}&seeds=${seeds}`,
+      { timeout: 30000 }
+    );
+    return response.data;
+  } catch (error) {
+    const detail = error.response?.data?.error;
+    console.error('Error previewing topic:', detail || error.message);
+    throw new Error(detail || error.message || 'Preview failed');
+  }
+};
+
+/** List workspaces that currently hold data, with their node/edge counts. */
+export const fetchWorkspaces = async () => {
+  try {
+    const response = await axios.get(`${API_BASE_URL}/graph/workspaces`);
+    return response.data.workspaces || [];
+  } catch (error) {
+    console.error('Error fetching workspaces:', error);
+    return [];
+  }
+};
+
+/** The ingestion sources this server has registered. */
+export const fetchSources = async () => {
+  try {
+    const response = await axios.get(`${API_BASE_URL}/ingest/sources`);
+    return response.data.sources || [];
+  } catch (error) {
+    console.error('Error fetching sources:', error);
+    return [];
+  }
+};
+
+/**
+ * A node's neighbourhood as a subgraph, so a large workspace can be explored
+ * one focus at a time instead of rendered whole.
+ */
+export const fetchNeighborhood = async ({ workspace = 'default', nodeId, hops = 2, limit = 300 }) => {
+  const params = new URLSearchParams({ workspace, nodeId, hops: String(hops), limit: String(limit) });
+  const response = await axios.get(`${API_BASE_URL}/graph/neighborhood?${params}`);
+  return response.data;
+};
+
+/** Locate nodes by name without altering what the graph is showing. */
+export const findNodes = async (workspace, query, limit = 8) => {
+  if (!query || !query.trim()) return [];
+  try {
+    const params = new URLSearchParams({ workspace, q: query, limit: String(limit) });
+    const response = await axios.get(`${API_BASE_URL}/graph/find?${params}`);
+    return response.data.matches || [];
+  } catch (error) {
+    console.error('Error finding nodes:', error);
+    return [];
+  }
+};
+
+/** A node's direct connections, with the relation and its direction. */
+export const fetchConnections = async (workspace, nodeId) => {
+  const params = new URLSearchParams({ workspace, nodeId });
+  const response = await axios.get(`${API_BASE_URL}/graph/connections?${params}`);
+  return response.data;
+};

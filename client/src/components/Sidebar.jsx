@@ -1,208 +1,165 @@
 import React, { useState, useEffect } from 'react';
 import './Sidebar.css';
 import ImportExport from './ImportExport';
+import WebIngest from './WebIngest';
 import NodeEditor from './NodeEditor';
 import EdgeEditor from './EdgeEditor';
 import GraphExporter from './GraphExporter';
 
+/** A collapsible panel section. Sections remember their own open state. */
+const Section = ({ title, badge, defaultOpen = true, children }) => {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <section className={`panel ${open ? 'is-open' : ''}`}>
+      <button className="panel-head" onClick={() => setOpen(o => !o)} aria-expanded={open}>
+        <span className="panel-chevron" aria-hidden="true">▸</span>
+        <span className="panel-title">{title}</span>
+        {badge != null && <span className="panel-badge">{badge}</span>}
+      </button>
+      {open && <div className="panel-body">{children}</div>}
+    </section>
+  );
+};
+
 const Sidebar = ({ filters, onFilterChange, nodeCount, totalCount, availableTypes, stats, onDataChange, graphContainerRef }) => {
-  const [searchValue, setSearchValue] = useState(filters.search || '');
   const [selectedTypes, setSelectedTypes] = useState(filters.types || []);
-  const [maxYearValue, setMaxYearValue] = useState(filters.maxYear || stats?.yearRange?.maxYear || 2025);
-  const [minYearValue, setMinYearValue] = useState(filters.minYear || stats?.yearRange?.minYear || 2000);
-  const [workspaceValue, setWorkspaceValue] = useState(filters.workspace || 'default');
+  const [maxYearValue, setMaxYearValue] = useState(filters.maxYear || '');
+  const [minYearValue, setMinYearValue] = useState(filters.minYear || '');
   const [showNodeEditor, setShowNodeEditor] = useState(false);
   const [showEdgeEditor, setShowEdgeEditor] = useState(false);
 
-  useEffect(() => {
-    setSearchValue(filters.search || '');
-    setSelectedTypes(filters.types || []);
-    setMaxYearValue(filters.maxYear || stats?.yearRange?.maxYear || 2025);
-    setMinYearValue(filters.minYear || stats?.yearRange?.minYear || 2000);
-    setWorkspaceValue(filters.workspace || 'default');
-  }, [filters, stats]);
+  const workspaceValue = filters.workspace || 'default';
 
-  const handleSearchChange = (e) => {
-    const value = e.target.value;
-    setSearchValue(value);
-    // Debounce search
-    clearTimeout(window.searchTimeout);
-    window.searchTimeout = setTimeout(() => {
-      onFilterChange({ ...filters, search: value });
-    }, 300);
-  };
+  useEffect(() => {
+    setSelectedTypes(filters.types || []);
+    setMaxYearValue(filters.maxYear || '');
+    setMinYearValue(filters.minYear || '');
+  }, [filters]);
 
   const handleTypeToggle = (type) => {
-    const newTypes = selectedTypes.includes(type)
+    const next = selectedTypes.includes(type)
       ? selectedTypes.filter(t => t !== type)
       : [...selectedTypes, type];
-    
-    setSelectedTypes(newTypes);
-    onFilterChange({ ...filters, types: newTypes });
+    setSelectedTypes(next);
+    onFilterChange({ ...filters, types: next });
   };
 
-  const handleMaxYearChange = (e) => {
-    const value = parseInt(e.target.value) || null;
-    setMaxYearValue(value);
-    onFilterChange({ ...filters, maxYear: value });
+  const clearTypes = () => {
+    setSelectedTypes([]);
+    onFilterChange({ ...filters, types: [] });
   };
 
-  const handleMinYearChange = (e) => {
-    const value = parseInt(e.target.value) || null;
-    setMinYearValue(value);
-    onFilterChange({ ...filters, minYear: value });
+  const handleYear = (which) => (e) => {
+    const raw = e.target.value;
+    const value = raw === '' ? null : parseInt(raw, 10);
+    if (which === 'min') setMinYearValue(raw); else setMaxYearValue(raw);
+    onFilterChange({ ...filters, [which === 'min' ? 'minYear' : 'maxYear']: value });
   };
 
-  const handleWorkspaceChange = (e) => {
-    const value = e.target.value;
-    setWorkspaceValue(value);
-    onFilterChange({ ...filters, workspace: value });
+  const clearYears = () => {
+    setMinYearValue('');
+    setMaxYearValue('');
+    onFilterChange({ ...filters, minYear: null, maxYear: null });
   };
 
-  const minYear = stats?.yearRange?.minYear || 2000;
-  const maxYear = stats?.yearRange?.maxYear || 2025;
-
-  const handleNodeEditorSave = () => {
-    setShowNodeEditor(false);
-    if (onDataChange) onDataChange();
-  };
-
-  const handleEdgeEditorSave = () => {
-    setShowEdgeEditor(false);
-    if (onDataChange) onDataChange();
-  };
+  const yearsActive = minYearValue !== '' || maxYearValue !== '';
 
   return (
     <div className="sidebar">
-      <h2>WorldGraph 🌐</h2>
-      
-      <div className="quick-actions">
-        <button 
-          className="action-btn primary"
-          onClick={() => setShowNodeEditor(true)}
-          title="Create new node"
-        >
-          ➕ Add Node
-        </button>
-        <button 
-          className="action-btn secondary"
-          onClick={() => setShowEdgeEditor(true)}
-          title="Create new connection"
-        >
-          🔗 Add Connection
-        </button>
-      </div>
-
       {showNodeEditor && (
         <div className="editor-overlay">
           <NodeEditor
             workspace={workspaceValue}
-            onSave={handleNodeEditorSave}
+            onSave={() => { setShowNodeEditor(false); onDataChange?.(); }}
             onCancel={() => setShowNodeEditor(false)}
           />
         </div>
       )}
-
       {showEdgeEditor && (
         <div className="editor-overlay">
           <EdgeEditor
             workspace={workspaceValue}
             nodes={[]}
-            onSave={handleEdgeEditorSave}
+            onSave={() => { setShowEdgeEditor(false); onDataChange?.(); }}
             onCancel={() => setShowEdgeEditor(false)}
           />
         </div>
       )}
-      
-      <div className="filters">
-        <label>
-          <strong>Workspace:</strong>
-          <input
-            type="text"
-            value={workspaceValue}
-            onChange={handleWorkspaceChange}
-            placeholder="default"
-            style={{ width: '100%', marginTop: '5px' }}
-          />
-        </label>
+
+      <div className="sidebar-actions">
+        <button className="act act-primary" onClick={() => setShowNodeEditor(true)}>
+          <span aria-hidden="true">＋</span> Node
+        </button>
+        <button className="act" onClick={() => setShowEdgeEditor(true)}>
+          <span aria-hidden="true">⇄</span> Connection
+        </button>
       </div>
 
-      <input
-        type="text"
-        id="searchInput"
-        placeholder="Search entities..."
-        value={searchValue}
-        onChange={handleSearchChange}
-      />
-      
-      <div className="filters">
-        <strong>Filter by Type</strong>
-        <br />
+      <Section title="Pull from the web" defaultOpen>
+        <WebIngest workspace={workspaceValue} onIngestComplete={onDataChange} />
+      </Section>
+
+      <Section
+        title="Entity types"
+        badge={selectedTypes.length ? `${selectedTypes.length}/${availableTypes.length}` : availableTypes.length || null}
+      >
         {availableTypes.length > 0 ? (
-          availableTypes.map(type => (
-            <label key={type}>
-              <input
-                type="checkbox"
-                className="typeFilter"
-                value={type}
-                checked={selectedTypes.includes(type)}
-                onChange={() => handleTypeToggle(type)}
-              />
-              {' '}{type}
-            </label>
-          ))
+          <>
+            <div className="chips">
+              {availableTypes.map(type => (
+                <button
+                  key={type}
+                  className={`chip ${selectedTypes.includes(type) ? 'is-on' : ''}`}
+                  onClick={() => handleTypeToggle(type)}
+                >
+                  {type}
+                </button>
+              ))}
+            </div>
+            {selectedTypes.length > 0 && (
+              <button className="link-btn" onClick={clearTypes}>Show all types</button>
+            )}
+          </>
         ) : (
-          <div style={{ fontSize: '0.9em', color: '#666' }}>No types available</div>
+          <p className="panel-empty">No types in this workspace yet.</p>
         )}
-      </div>
+      </Section>
 
-      <div className="filters">
-        <strong>Timeline</strong>
-        <br />
-        <label>
-          Min Year: <input
-            type="number"
-            value={minYearValue || ''}
-            onChange={handleMinYearChange}
-            min={minYear}
-            max={maxYear}
-            style={{ width: '80px' }}
-            placeholder="Any"
-          />
-        </label>
-        <br />
-        <label>
-          Max Year: <input
-            type="number"
-            value={maxYearValue || ''}
-            onChange={handleMaxYearChange}
-            min={minYear}
-            max={maxYear}
-            style={{ width: '80px' }}
-            placeholder="Any"
-          />
-        </label>
-      </div>
+      <Section title="Timeline" badge={yearsActive ? 'on' : null} defaultOpen={false}>
+        <div className="year-row">
+          <label>
+            <span>From</span>
+            <input type="number" value={minYearValue} onChange={handleYear('min')} placeholder="any" />
+          </label>
+          <label>
+            <span>To</span>
+            <input type="number" value={maxYearValue} onChange={handleYear('max')} placeholder="any" />
+          </label>
+        </div>
+        <p className="panel-note">Entities without a date stay visible.</p>
+        {yearsActive && <button className="link-btn" onClick={clearYears}>Clear timeline</button>}
+      </Section>
 
       {stats && (
-        <div className="filters" style={{ fontSize: '0.85em', color: '#666' }}>
-          <strong>Statistics</strong>
-          <div>Nodes: {stats.nodeCount}</div>
-          <div>Edges: {stats.edgeCount}</div>
-          <div>Avg Degree: {stats.avgDegree}</div>
-        </div>
+        <Section title="Workspace stats" defaultOpen={false}>
+          <div className="stat-grid">
+            <div><strong>{stats.nodeCount}</strong><span>nodes</span></div>
+            <div><strong>{stats.edgeCount}</strong><span>edges</span></div>
+            <div><strong>{stats.avgDegree}</strong><span>avg degree</span></div>
+          </div>
+        </Section>
       )}
 
-      <ImportExport workspace={workspaceValue} onImportComplete={() => window.location.reload()} />
-      
-      <GraphExporter graphContainerRef={graphContainerRef} graphName={workspaceValue} />
+      <Section title="Import & export" defaultOpen={false}>
+        <ImportExport workspace={workspaceValue} onImportComplete={onDataChange} />
+        <GraphExporter graphContainerRef={graphContainerRef} graphName={workspaceValue} />
+      </Section>
 
-      <footer>
-        Showing <span id="nodeCount">{nodeCount}</span> of {totalCount || nodeCount} entities
+      <footer className="sidebar-foot">
+        Showing {nodeCount} of {totalCount || nodeCount} entities
       </footer>
     </div>
   );
 };
 
 export default Sidebar;
-

@@ -3,6 +3,17 @@ const router = express.Router();
 const Node = require('../models/Node');
 const Edge = require('../models/Edge');
 
+// Longest path (in nodes) considered when looking for indirect connections.
+const MAX_PATH_NODES = 3;
+// Cap on how many distinct routes we record per node pair.
+const MAX_PATHS_PER_PAIR = 10;
+const EMPTY_SET = new Set();
+
+/** id -> node lookup, replacing repeated O(n) `nodes.find` scans. */
+function indexNodesById(nodes) {
+  return new Map(nodes.map(node => [node._id.toString(), node]));
+}
+
 // Get all insights for a workspace
 router.get('/', async (req, res) => {
   try {
@@ -84,6 +95,8 @@ async function findUnexpectedConnections(workspace) {
   if (nodes.length < 3) {
     return { connections: [], message: 'Not enough data to find unexpected connections' };
   }
+
+  const nodeById = indexNodesById(nodes);
   
   // Build adjacency map
   const adjacencyMap = new Map();
@@ -98,56 +111,53 @@ async function findUnexpectedConnections(workspace) {
     adjacencyMap.get(toId).add(fromId);
   });
   
-  // Find nodes with multiple connection paths
+  // Walk each node's neighbourhood once, bucketing every simple path we find
+  // by where it ends. The previous approach enumerated all n^2 node pairs and
+  // ran a fresh BFS for each, re-walking the same neighbourhood once per
+  // target - which cost ~13s on a few hundred nodes.
   const unexpectedConnections = [];
   const processed = new Set();
-  
-  for (let i = 0; i < nodes.length; i++) {
-    for (let j = i + 1; j < nodes.length; j++) {
-      const nodeA = nodes[i];
-      const nodeB = nodes[j];
-      const key = `${nodeA._id}-${nodeB._id}`;
-      
-      if (processed.has(key)) continue;
-      processed.add(key);
-      
-      // Check if directly connected
-      const directConnection = edges.find(e => 
-        (e.from._id.toString() === nodeA._id.toString() && e.to._id.toString() === nodeB._id.toString()) ||
-        (e.from._id.toString() === nodeB._id.toString() && e.to._id.toString() === nodeA._id.toString())
-      );
-      
-      if (directConnection) continue; // Skip if already directly connected
-      
-      // Find paths between them (2-3 hops)
-      const paths = findPaths(nodeA._id.toString(), nodeB._id.toString(), adjacencyMap, 3);
-      
-      if (paths.length >= 2) {
-        unexpectedConnections.push({
-          nodeA: {
-            id: nodeA._id.toString(),
-            label: nodeA.label,
-            group: nodeA.group
-          },
-          nodeB: {
-            id: nodeB._id.toString(),
-            label: nodeB.label,
-            group: nodeB.group
-          },
-          pathCount: paths.length,
-          paths: paths.slice(0, 3).map(path => ({
-            nodes: path.map(id => {
-              const node = nodes.find(n => n._id.toString() === id);
-              return node ? { id: node._id.toString(), label: node.label, group: node.group } : null;
-            }).filter(Boolean),
-            length: path.length
-          })),
-          insight: `${nodeA.label} and ${nodeB.label} are connected through ${paths.length} different paths, suggesting a strong but indirect relationship.`
-        });
-      }
+
+  for (const nodeA of nodes) {
+    const startId = nodeA._id.toString();
+    const directNeighbours = adjacencyMap.get(startId) || EMPTY_SET;
+    const pathsByTarget = pathsFrom(startId, adjacencyMap, MAX_PATH_NODES);
+
+    for (const [targetId, paths] of pathsByTarget) {
+      // Multiple indirect routes are the signal; a direct edge is not "unexpected".
+      if (paths.length < 2 || directNeighbours.has(targetId)) continue;
+
+      const pairKey = startId < targetId ? `${startId}-${targetId}` : `${targetId}-${startId}`;
+      if (processed.has(pairKey)) continue;
+      processed.add(pairKey);
+
+      const nodeB = nodeById.get(targetId);
+      if (!nodeB) continue;
+
+      unexpectedConnections.push({
+        nodeA: {
+          id: startId,
+          label: nodeA.label,
+          group: nodeA.group
+        },
+        nodeB: {
+          id: targetId,
+          label: nodeB.label,
+          group: nodeB.group
+        },
+        pathCount: paths.length,
+        paths: paths.slice(0, 3).map(path => ({
+          nodes: path.map(id => {
+            const node = nodeById.get(id);
+            return node ? { id: node._id.toString(), label: node.label, group: node.group } : null;
+          }).filter(Boolean),
+          length: path.length
+        })),
+        insight: `${nodeA.label} and ${nodeB.label} are connected through ${paths.length} different paths, suggesting a strong but indirect relationship.`
+      });
     }
   }
-  
+
   // Sort by path count and return top 5
   unexpectedConnections.sort((a, b) => b.pathCount - a.pathCount);
   
@@ -160,31 +170,34 @@ async function findUnexpectedConnections(workspace) {
   };
 }
 
-// BFS to find paths between two nodes
-function findPaths(start, end, adjacencyMap, maxDepth) {
-  const paths = [];
+/**
+ * Enumerate simple paths of up to `maxNodes` nodes starting at `start`, grouped
+ * by the node each path ends on. A single traversal answers "how many distinct
+ * routes reach X?" for every X in the neighbourhood at once.
+ */
+function pathsFrom(start, adjacencyMap, maxNodes) {
+  const byTarget = new Map();
   const queue = [[start, [start]]];
-  const visited = new Set();
-  
-  while (queue.length > 0 && paths.length < 10) {
+
+  while (queue.length > 0) {
     const [current, path] = queue.shift();
-    
-    if (path.length > maxDepth) continue;
-    
-    if (current === end && path.length > 1) {
-      paths.push([...path]);
-      continue;
+
+    if (path.length > 1) {
+      let found = byTarget.get(current);
+      if (!found) byTarget.set(current, found = []);
+      if (found.length < MAX_PATHS_PER_PAIR) found.push(path);
     }
-    
-    const neighbors = adjacencyMap.get(current) || new Set();
-    for (const neighbor of neighbors) {
+
+    if (path.length >= maxNodes) continue;
+
+    for (const neighbor of adjacencyMap.get(current) || EMPTY_SET) {
       if (!path.includes(neighbor)) {
         queue.push([neighbor, [...path, neighbor]]);
       }
     }
   }
-  
-  return paths;
+
+  return byTarget;
 }
 
 // Find key insights (most connected nodes, clusters, etc.)
@@ -195,6 +208,8 @@ async function findKeyInsights(workspace) {
   if (nodes.length === 0) {
     return { insights: [], message: 'No data available' };
   }
+
+  const nodeById = indexNodesById(nodes);
   
   // Calculate node degrees
   const nodeDegrees = new Map();
@@ -209,7 +224,7 @@ async function findKeyInsights(workspace) {
   // Find hubs (most connected nodes)
   const hubs = Array.from(nodeDegrees.entries())
     .map(([id, degree]) => {
-      const node = nodes.find(n => n._id.toString() === id);
+      const node = nodeById.get(id);
       return node ? { node, degree } : null;
     })
     .filter(Boolean)
@@ -248,7 +263,7 @@ async function findKeyInsights(workspace) {
       description: `Groups of nodes that are highly interconnected`,
       clusters: clusters.slice(0, 3).map(cluster => ({
         nodes: cluster.map(id => {
-          const node = nodes.find(n => n._id.toString() === id);
+          const node = nodeById.get(id);
           return node ? { id: node._id.toString(), label: node.label, group: node.group } : null;
         }).filter(Boolean),
         size: cluster.length,
@@ -365,6 +380,8 @@ async function analyzeInfluence(workspace) {
   if (nodes.length === 0) {
     return { influencers: [], message: 'No data available' };
   }
+
+  const nodeById = indexNodesById(nodes);
   
   // Group nodes by type
   const nodesByType = new Map();
@@ -393,7 +410,7 @@ async function analyzeInfluence(workspace) {
   
   const influencers = Array.from(crossTypeConnections.entries())
     .map(([id, count]) => {
-      const node = nodes.find(n => n._id.toString() === id);
+      const node = nodeById.get(id);
       return node ? { node, count } : null;
     })
     .filter(Boolean)
